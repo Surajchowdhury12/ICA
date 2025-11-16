@@ -58,7 +58,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView }) => {
           {/* Profile */}
           <div className="flex items-center space-x-4">
             <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-medium">JD</span>
+              <span className="text-white text-sm font-medium">SC</span>
             </div>
           </div>
         </div>
