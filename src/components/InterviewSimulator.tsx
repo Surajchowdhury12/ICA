@@ -5,7 +5,38 @@ const InterviewSimulator: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState<string>('junior')
   const [isInterviewActive, setIsInterviewActive] = useState<boolean>(false)
   const [currentQuestion, setCurrentQuestion] = useState<number>(0)
+  const [userAnswers, setUserAnswers] = useState<string[]>([])
+  const [currentAnswer, setCurrentAnswer] = useState<string>('')
+  const [aiFeedback, setAIFeedback] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(false)
 
+  // Call backend API for feedback
+  async function getAIReview(question: string, answer: string) {
+    setIsLoading(true);
+    try {
+      const response = await fetch("http://localhost:5001/api/ai-feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ question, answer })
+      });
+      const data = await response.json();
+      setAIFeedback((prev) => {
+        const updated = [...prev];
+        updated[currentQuestion] = data.feedback || "No feedback received.";
+        return updated;
+      });
+    } catch (err) {
+      setAIFeedback((prev) => {
+        const updated = [...prev];
+        updated[currentQuestion] = "Error getting feedback.";
+        return updated;
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const roles = [
     { value: 'frontend', label: 'Frontend Developer', icon: '🎨' },
     { value: 'backend', label: 'Backend Developer', icon: '⚙️' },
@@ -39,21 +70,35 @@ const InterviewSimulator: React.FC = () => {
     }
   ]
 
+
   const startInterview = () => {
     setIsInterviewActive(true)
     setCurrentQuestion(0)
+    setUserAnswers([])
+    setCurrentAnswer("")
+    setAIFeedback([])
   }
+
 
   const endInterview = () => {
     setIsInterviewActive(false)
     setCurrentQuestion(0)
+    setCurrentAnswer("")
   }
 
-  const nextQuestion = () => {
+
+  const nextQuestion = async () => {
+    // Save current answer
+    const updatedAnswers = [...userAnswers];
+    updatedAnswers[currentQuestion] = currentAnswer;
+    setUserAnswers(updatedAnswers);
+    // Get AI feedback for this answer
+    await getAIReview(mockQuestions[currentQuestion].question, currentAnswer);
+    setCurrentAnswer("");
     if (currentQuestion < mockQuestions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1)
+      setCurrentQuestion(currentQuestion + 1);
     } else {
-      endInterview()
+      setIsInterviewActive(false);
     }
   }
 
@@ -117,19 +162,35 @@ const InterviewSimulator: React.FC = () => {
               <textarea
                 className="w-full h-32 p-3 bg-gray-900 text-white rounded-lg border border-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 resize-none"
                 placeholder="Type your answer here..."
+                value={currentAnswer}
+                onChange={e => setCurrentAnswer(e.target.value)}
+                disabled={isLoading}
               />
             </div>
+
+            {aiFeedback[currentQuestion] && (
+              <div className="bg-blue-900/30 text-blue-200 rounded-lg p-4 mb-6">
+                <strong>AI Feedback:</strong>
+                <div>{aiFeedback[currentQuestion]}</div>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="text-center text-primary-400 mb-4">Getting AI feedback...</div>
+            )}
 
             <div className="flex justify-between">
               <button
                 onClick={endInterview}
                 className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
+                disabled={isLoading}
               >
                 End Interview
               </button>
               <button
                 onClick={nextQuestion}
                 className="btn-primary"
+                disabled={isLoading || !currentAnswer.trim()}
               >
                 {currentQuestion < mockQuestions.length - 1 ? 'Next Question' : 'Finish Interview'}
               </button>
