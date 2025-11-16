@@ -14,7 +14,7 @@ app.use(bodyParser.json());
 app.post('/api/ai-feedback', async (req, res) => {
   const { question, answer } = req.body;
   const HF_API_KEY = process.env.HF_API_KEY;
-  const model = 'moonshotai/Kimi-K2-Thinking';
+  const model = 'facebook/bart-large-cnn';
 
   try {
     const response = await fetch(
@@ -31,8 +31,17 @@ app.post('/api/ai-feedback', async (req, res) => {
       }
     );
     const data = await response.json();
-    res.json({ feedback: data[0]?.generated_text || 'No feedback received.' });
+    let feedback = 'No feedback received.';
+    if (Array.isArray(data) && data[0]) {
+      if (data[0].summary_text) {
+        feedback = data[0].summary_text;
+      } else if (data[0].generated_text) {
+        feedback = data[0].generated_text;
+      }
+    }
+    res.json({ feedback });
   } catch (err) {
+    console.error('AI feedback error:', err);
     res.status(500).json({ error: 'Failed to get AI feedback.' });
   }
 });
