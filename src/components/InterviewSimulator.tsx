@@ -172,12 +172,12 @@ const InterviewSimulator: React.FC = () => {
 
             {aiFeedback[currentQuestion] && (
               <div className="bg-blue-900/30 text-blue-200 rounded-lg p-4 mb-6">
-                <strong>AI Feedback:</strong>
+                <strong>IC Feedback:</strong>
                 <div>{aiFeedback[currentQuestion]}</div>
               </div>
             )}
 
-            {isLoading && (
+            {isLoading && !showSummary && currentQuestion === mockQuestions.length - 1 && (
               <div className="text-center text-primary-400 mb-4">Getting AI feedback...</div>
             )}
 
