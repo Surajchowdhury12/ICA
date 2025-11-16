@@ -4,6 +4,7 @@ const InterviewSimulator: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<string>('frontend')
   const [selectedLevel, setSelectedLevel] = useState<string>('junior')
   const [isInterviewActive, setIsInterviewActive] = useState<boolean>(false)
+  const [showSummary, setShowSummary] = useState<boolean>(false)
   const [currentQuestion, setCurrentQuestion] = useState<number>(0)
   const [userAnswers, setUserAnswers] = useState<string[]>([])
   const [currentAnswer, setCurrentAnswer] = useState<string>('')
@@ -98,6 +99,7 @@ const InterviewSimulator: React.FC = () => {
     if (currentQuestion < mockQuestions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
+      setShowSummary(true);
       setIsInterviewActive(false);
     }
   }
@@ -199,6 +201,42 @@ const InterviewSimulator: React.FC = () => {
         </div>
       </section>
     )
+  }
+
+  if (showSummary) {
+    return (
+      <section className="min-h-screen bg-gradient-to-br from-dark-bg to-gray-900 py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-white mb-2">Interview Summary</h1>
+            <p className="text-gray-400">See your answers and AI feedback below.</p>
+          </div>
+          <div className="space-y-8">
+            {mockQuestions.map((q, idx) => (
+              <div key={idx} className="card bg-dark-card border-dark-border p-6">
+                <h2 className="text-lg font-semibold text-white mb-2">Q{idx + 1}: {q.question}</h2>
+                <div className="mb-2">
+                  <span className="font-medium text-gray-300">Your Answer:</span>
+                  <div className="bg-gray-800 text-white rounded p-3 mt-1">{userAnswers[idx] || <em>No answer</em>}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-blue-200">AI Feedback:</span>
+                  <div className="bg-blue-900/30 text-blue-200 rounded p-3 mt-1">{aiFeedback[idx] || <em>No feedback</em>}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-10">
+            <button
+              onClick={startInterview}
+              className="btn-primary px-8 py-3 text-lg"
+            >
+              Restart Interview
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
