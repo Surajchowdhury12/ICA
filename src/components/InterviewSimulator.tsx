@@ -14,25 +14,21 @@ const InterviewSimulator: React.FC = () => {
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false)
   const [questions, setQuestions] = useState<string[]>([])
   const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(false)
+  const [isGeneratingFeedback, setIsGeneratingFeedback] = useState<boolean>(false)
+  const [feedbackProgress, setFeedbackProgress] = useState<number>(0)
 
   // Call backend API for feedback (non-blocking, background)
   async function getAIReview(question: string, answer: string) {
     if (!question || !answer) return;
     
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
-      
       const response = await fetch("http://localhost:5001/api/ai-feedback", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ question, answer }),
-        signal: controller.signal
+        body: JSON.stringify({ question, answer })
       });
-      
-      clearTimeout(timeoutId);
       
       const data = await response.json();
       setAIFeedback((prev) => {
@@ -40,9 +36,13 @@ const InterviewSimulator: React.FC = () => {
         updated[currentQuestion] = data.feedback || "Feedback unavailable.";
         return updated;
       });
+      
+      // Update progress
+      setFeedbackProgress((prev) => prev + 1);
     } catch (err) {
       console.error('Feedback error:', err);
-      // Silently fail - feedback will show as loading
+      // Update progress even on error
+      setFeedbackProgress((prev) => prev + 1);
     }
   }
 
@@ -116,9 +116,9 @@ const InterviewSimulator: React.FC = () => {
 
 
   const endInterview = () => {
+    setIsGeneratingFeedback(true)
     setIsInterviewActive(false)
-    setCurrentQuestion(0)
-    setCurrentAnswer("")
+    setFeedbackProgress(0)
   }
 
 
@@ -128,18 +128,47 @@ const InterviewSimulator: React.FC = () => {
     updatedAnswers[currentQuestion] = currentAnswer;
     setUserAnswers(updatedAnswers);
     
-    // Move to next question first, then get feedback in background
+    // Capture answer and question before clearing state
+    const answerToSubmit = currentAnswer;
+    const questionToSubmit = questions[currentQuestion];
+    
+    // Move to next question
     setCurrentAnswer("");
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
-      setShowSummary(true);
+      // Show loading screen for feedback generation
+      setIsGeneratingFeedback(true);
       setIsInterviewActive(false);
+      setFeedbackProgress(0);
     }
     
     // Get AI feedback for this answer in background (don't wait)
-    getAIReview(questions[currentQuestion], currentAnswer);
+    getAIReview(questionToSubmit, answerToSubmit);
   }
+
+  // Auto-transition to summary when feedback is complete
+  React.useEffect(() => {
+    if (!isGeneratingFeedback) return;
+    
+    const allFeedbackGenerated = aiFeedback.filter(f => f && f.trim().length > 0).length === questions.length;
+    
+    if (allFeedbackGenerated) {
+      const timer = setTimeout(() => {
+        setShowSummary(true);
+        setIsGeneratingFeedback(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+    
+    // Timeout after 2 minutes
+    const timeoutTimer = setTimeout(() => {
+      setShowSummary(true);
+      setIsGeneratingFeedback(false);
+    }, 120000);
+    
+    return () => clearTimeout(timeoutTimer);
+  }, [isGeneratingFeedback, aiFeedback, questions.length]);
 
   if (isInterviewActive) {
     return (
@@ -246,6 +275,57 @@ const InterviewSimulator: React.FC = () => {
         </div>
       </section>
     )
+  }
+
+  // Feedback Generation Screen
+  if (isGeneratingFeedback && !showSummary) {
+    const allFeedbackGenerated = aiFeedback.filter(f => f && f.trim().length > 0).length === questions.length;
+    
+    return (
+      <section className="min-h-screen bg-gradient-to-br from-dark-bg to-gray-900 py-8 flex items-center justify-center">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="card bg-dark-card border-dark-border p-12">
+            <div className="mb-8">
+              <div className="inline-block">
+                {!allFeedbackGenerated ? (
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary-500 mb-6"></div>
+                ) : (
+                  <div className="text-6xl mb-6">✓</div>
+                )}
+              </div>
+            </div>
+
+            <h2 className="text-3xl font-bold text-white mb-4">
+              {allFeedbackGenerated ? '✓ Interview Complete!' : 'Generating Feedback'}
+            </h2>
+            
+            <p className="text-gray-300 mb-8 text-lg">
+              {allFeedbackGenerated 
+                ? 'All feedback has been generated. Preparing your summary...' 
+                : `Processing your answers...\n${feedbackProgress} of ${questions.length} feedbacks generated`}
+            </p>
+
+            {/* Progress bar */}
+            <div className="w-full bg-gray-700 rounded-full h-3 mb-8 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-primary-500 to-primary-400 h-3 rounded-full transition-all duration-500"
+                style={{ width: `${questions.length > 0 ? (feedbackProgress / questions.length) * 100 : 0}%` }}
+              ></div>
+            </div>
+
+            <p className="text-gray-400 text-sm">
+              {feedbackProgress}/{questions.length} feedbacks ready
+            </p>
+
+            {allFeedbackGenerated && (
+              <div className="mt-8 text-sm text-gray-400 animate-pulse">
+                Redirecting to summary...
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
   }
 
   if (showSummary) {
