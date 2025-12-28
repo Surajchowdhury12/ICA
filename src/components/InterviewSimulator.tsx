@@ -3,6 +3,7 @@ import React, { useState } from 'react'
 const InterviewSimulator: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<string>('frontend')
   const [selectedLevel, setSelectedLevel] = useState<string>('junior')
+  const [selectedTechStack, setSelectedTechStack] = useState<string>('')
   const [isInterviewActive, setIsInterviewActive] = useState<boolean>(false)
   const [showSummary, setShowSummary] = useState<boolean>(false)
   const [currentQuestion, setCurrentQuestion] = useState<number>(0)
@@ -10,32 +11,57 @@ const InterviewSimulator: React.FC = () => {
   const [currentAnswer, setCurrentAnswer] = useState<string>('')
   const [aiFeedback, setAIFeedback] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false)
+  const [questions, setQuestions] = useState<string[]>([])
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(false)
 
-  // Call backend API for feedback
+  // Call backend API for feedback (non-blocking, background)
   async function getAIReview(question: string, answer: string) {
-    setIsLoading(true);
+    if (!question || !answer) return;
+    
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
+      
       const response = await fetch("http://localhost:5001/api/ai-feedback", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ question, answer })
+        body: JSON.stringify({ question, answer }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+      
       const data = await response.json();
       setAIFeedback((prev) => {
         const updated = [...prev];
-        updated[currentQuestion] = data.feedback || "No feedback received.";
+        updated[currentQuestion] = data.feedback || "Feedback unavailable.";
         return updated;
       });
     } catch (err) {
-      setAIFeedback((prev) => {
-        const updated = [...prev];
-        updated[currentQuestion] = "Error getting feedback.";
-        return updated;
-      });
-    } finally {
-      setIsLoading(false);
+      console.error('Feedback error:', err);
+      // Silently fail - feedback will show as loading
+    }
+  }
+
+  // Web Speech API - Speak the question
+  const speakQuestion = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Cancel any ongoing speech
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1; // Normal speed
+      utterance.pitch = 1; // Normal pitch
+      utterance.volume = 1; // Full volume
+
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      alert('Speech synthesis not supported in this browser');
     }
   }
   const roles = [
@@ -53,31 +79,39 @@ const InterviewSimulator: React.FC = () => {
     { value: 'senior', label: 'Senior (5+ years)' }
   ]
 
-  const mockQuestions = [
-    {
-      question: "Tell me about yourself and your experience with React.",
-      type: "behavioral",
-      difficulty: "easy"
-    },
-    {
-      question: "Explain the difference between let, const, and var in JavaScript.",
-      type: "technical",
-      difficulty: "medium"
-    },
-    {
-      question: "How would you optimize a React application for performance?",
-      type: "technical",
-      difficulty: "hard"
+  // Fetch questions from backend API
+  const fetchQuestions = async () => {
+    setIsLoadingQuestions(true);
+    try {
+      const response = await fetch("http://localhost:5001/api/generate-questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          role: selectedRole,
+          level: selectedLevel,
+          techStack: selectedTechStack
+        })
+      });
+      const data = await response.json();
+      setQuestions(data.questions || []);
+    } catch (err) {
+      console.error('Error fetching questions:', err);
+      alert('Failed to fetch questions. Please try again.');
+    } finally {
+      setIsLoadingQuestions(false);
     }
-  ]
+  }
 
 
-  const startInterview = () => {
+  const startInterview = async () => {
     setIsInterviewActive(true)
     setCurrentQuestion(0)
     setUserAnswers([])
     setCurrentAnswer("")
     setAIFeedback([])
+    await fetchQuestions()
   }
 
 
@@ -93,15 +127,18 @@ const InterviewSimulator: React.FC = () => {
     const updatedAnswers = [...userAnswers];
     updatedAnswers[currentQuestion] = currentAnswer;
     setUserAnswers(updatedAnswers);
-    // Get AI feedback for this answer
-    await getAIReview(mockQuestions[currentQuestion].question, currentAnswer);
+    
+    // Move to next question first, then get feedback in background
     setCurrentAnswer("");
-    if (currentQuestion < mockQuestions.length - 1) {
+    if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
       setShowSummary(true);
       setIsInterviewActive(false);
     }
+    
+    // Get AI feedback for this answer in background (don't wait)
+    getAIReview(questions[currentQuestion], currentAnswer);
   }
 
   if (isInterviewActive) {
@@ -118,7 +155,7 @@ const InterviewSimulator: React.FC = () => {
               {roles.find(r => r.value === selectedRole)?.label} Interview
             </h1>
             <p className="text-gray-400">
-              Question {currentQuestion + 1} of {mockQuestions.length}
+              Question {currentQuestion + 1} of {questions.length}
             </p>
           </div>
 
@@ -126,78 +163,86 @@ const InterviewSimulator: React.FC = () => {
           <div className="w-full bg-gray-700 rounded-full h-2 mb-8">
             <div 
               className="bg-primary-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${((currentQuestion + 1) / mockQuestions.length) * 100}%` }}
+              style={{ width: `${questions.length > 0 ? ((currentQuestion + 1) / questions.length) * 100 : 0}%` }}
             ></div>
           </div>
 
-          {/* Question Card */}
-          <div className="card mb-8 bg-dark-card border-dark-border">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-3 ${
-                  mockQuestions[currentQuestion].type === 'technical' 
-                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300'
-                    : 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                }`}>
-                  {mockQuestions[currentQuestion].type === 'technical' ? '💻 Technical' : '🗣️ Behavioral'}
-                </span>
-                <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mb-3 ml-2 ${
-                  mockQuestions[currentQuestion].difficulty === 'easy' 
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                    : mockQuestions[currentQuestion].difficulty === 'medium'
-                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
-                    : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
-                }`}>
-                  {mockQuestions[currentQuestion].difficulty.charAt(0).toUpperCase() + mockQuestions[currentQuestion].difficulty.slice(1)}
-                </span>
+          {/* Loading Questions */}
+          {isLoadingQuestions ? (
+            <div className="card mb-8 bg-dark-card border-dark-border text-center py-12">
+              <div className="inline-block">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mb-4"></div>
+                <p className="text-gray-300">Loading interview questions...</p>
               </div>
             </div>
-            
-            <h2 className="text-xl font-semibold text-white mb-6">
-              {mockQuestions[currentQuestion].question}
-            </h2>
-
-            <div className="bg-gray-800 rounded-lg p-4 mb-6">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Your Answer:
-              </label>
-              <textarea
-                className="w-full h-32 p-3 bg-gray-900 text-white rounded-lg border border-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 resize-none"
-                placeholder="Type your answer here..."
-                value={currentAnswer}
-                onChange={e => setCurrentAnswer(e.target.value)}
-                disabled={isLoading}
-              />
+          ) : questions.length === 0 ? (
+            <div className="card mb-8 bg-dark-card border-dark-border text-center py-12">
+              <p className="text-gray-300">No questions available. Please try again.</p>
             </div>
+          ) : (
+            <>
+              {/* Question Card */}
+              <div className="card mb-8 bg-dark-card border-dark-border">
+                <h2 className="text-xl font-semibold text-white mb-6">
+                  {questions[currentQuestion]}
+                </h2>
 
-            {aiFeedback[currentQuestion] && (
-              <div className="bg-blue-900/30 text-blue-200 rounded-lg p-4 mb-6">
-                <strong>IC Feedback:</strong>
-                <div>{aiFeedback[currentQuestion]}</div>
+                <button
+                  onClick={() => speakQuestion(questions[currentQuestion])}
+                  disabled={isSpeaking}
+                  className={`mb-4 px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 ${
+                    isSpeaking
+                      ? 'bg-primary-600 text-white cursor-not-allowed'
+                      : 'bg-primary-500 hover:bg-primary-600 text-white'
+                  }`}
+                >
+                  <span className="text-lg">{isSpeaking ? '🔊' : '🔈'}</span>
+                  {isSpeaking ? 'Playing...' : 'Play Question Audio'}
+                </button>
+
+                <div className="bg-gray-800 rounded-lg p-4 mb-6">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Your Answer:
+                  </label>
+                  <textarea
+                    className="w-full h-32 p-3 bg-gray-900 text-white rounded-lg border border-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 resize-none"
+                    placeholder="Type your answer here..."
+                    value={currentAnswer}
+                    onChange={e => setCurrentAnswer(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                {aiFeedback[currentQuestion] ? (
+                  <div className="bg-blue-900/30 text-blue-200 rounded-lg p-4 mb-6">
+                    <strong>✓ IC Feedback:</strong>
+                    <div className="mt-2">{aiFeedback[currentQuestion]}</div>
+                  </div>
+                ) : currentQuestion > 0 && userAnswers[currentQuestion - 1] ? (
+                  <div className="bg-blue-900/30 text-blue-200 rounded-lg p-4 mb-6 animate-pulse">
+                    <strong>⏳ Generating feedback for previous answer...</strong>
+                  </div>
+                ) : null}
+
+                <div className="flex justify-between">
+                  <button
+                    onClick={endInterview}
+                    className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
+                    disabled={isLoading}
+                  >
+                    End Interview
+                  </button>
+                  <button
+                    onClick={nextQuestion}
+                    className="btn-primary"
+                    disabled={isLoading || !currentAnswer.trim()}
+                  >
+                    {currentQuestion < questions.length - 1 ? 'Next Question' : 'Finish Interview'}
+                  </button>
+                </div>
               </div>
-            )}
-
-            {isLoading && !showSummary && currentQuestion === mockQuestions.length - 1 && (
-              <div className="text-center text-primary-400 mb-4">Getting AI feedback...</div>
-            )}
-
-            <div className="flex justify-between">
-              <button
-                onClick={endInterview}
-                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
-                disabled={isLoading}
-              >
-                End Interview
-              </button>
-              <button
-                onClick={nextQuestion}
-                className="btn-primary"
-                disabled={isLoading || !currentAnswer.trim()}
-              >
-                {currentQuestion < mockQuestions.length - 1 ? 'Next Question' : 'Finish Interview'}
-              </button>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </section>
     )
@@ -212,9 +257,9 @@ const InterviewSimulator: React.FC = () => {
             <p className="text-gray-400">See your answers and AI feedback below.</p>
           </div>
           <div className="space-y-8">
-            {mockQuestions.map((q, idx) => (
+            {questions.map((q, idx) => (
               <div key={idx} className="card bg-dark-card border-dark-border p-6">
-                <h2 className="text-lg font-semibold text-white mb-2">Q{idx + 1}: {q.question}</h2>
+                <h2 className="text-lg font-semibold text-white mb-2">Q{idx + 1}: {q}</h2>
                 <div className="mb-2">
                   <span className="font-medium text-gray-300">Your Answer:</span>
                   <div className="bg-gray-800 text-white rounded p-3 mt-1">{userAnswers[idx] || <em>No answer</em>}</div>
@@ -299,6 +344,20 @@ const InterviewSimulator: React.FC = () => {
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Interview Details */}
+          <div className="mb-8">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+              Tech Stack (Optional)
+            </label>
+            <input
+              type="text"
+              value={selectedTechStack}
+              onChange={(e) => setSelectedTechStack(e.target.value)}
+              placeholder="e.g., React, JavaScript, TypeScript, CSS"
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-card text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
           </div>
 
           {/* Interview Details */}
