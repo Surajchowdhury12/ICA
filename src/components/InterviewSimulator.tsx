@@ -15,12 +15,26 @@ const InterviewSimulator: React.FC = () => {
   const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(false)
   const [isGeneratingFeedback, setIsGeneratingFeedback] = useState<boolean>(false)
   const [feedbackProgress, setFeedbackProgress] = useState<number>(0)
+  const [usedFallback, setUsedFallback] = useState<boolean>(false)
+  const [storedAnswers, setStoredAnswers] = useState<string[]>([])
 
   // Call backend API for feedback (non-blocking, background)
-  async function getAIReview(question: string, answer: string) {
+  async function getAIReview(question: string, answer: string, questionIdx: number) {
     if (!question || !answer) return;
     
     try {
+      // If using fallback, use stored answer as feedback
+      if (usedFallback && storedAnswers[questionIdx]) {
+        setAIFeedback((prev) => {
+          const updated = [...prev];
+          updated[questionIdx] = storedAnswers[questionIdx];
+          return updated;
+        });
+        setFeedbackProgress((prev) => prev + 1);
+        return;
+      }
+
+      // Otherwise, try to get AI feedback
       const response = await fetch("http://localhost:5001/api/ai-feedback", {
         method: "POST",
         headers: {
@@ -32,7 +46,7 @@ const InterviewSimulator: React.FC = () => {
       const data = await response.json();
       setAIFeedback((prev) => {
         const updated = [...prev];
-        updated[currentQuestion] = data.feedback || "Feedback unavailable.";
+        updated[questionIdx] = data.feedback || "Feedback unavailable.";
         return updated;
       });
       
@@ -78,10 +92,11 @@ const InterviewSimulator: React.FC = () => {
     { value: 'senior', label: 'Senior (5+ years)' }
   ]
 
-  // Fetch questions from backend API
+  // Fetch questions from backend API with fallback to MongoDB
   const fetchQuestions = async () => {
     setIsLoadingQuestions(true);
     try {
+      // Try to fetch from AI first
       const response = await fetch("http://localhost:5001/api/generate-questions", {
         method: "POST",
         headers: {
@@ -94,10 +109,45 @@ const InterviewSimulator: React.FC = () => {
         })
       });
       const data = await response.json();
-      setQuestions(data.questions || []);
+      
+      if (data.questions && data.questions.length > 0) {
+        // Successfully got AI questions
+        setQuestions(data.questions);
+        setUsedFallback(false);
+      } else {
+        throw new Error('No AI questions generated');
+      }
     } catch (err) {
-      console.error('Error fetching questions:', err);
-      alert('Failed to fetch questions. Please try again.');
+      console.error('Error fetching AI questions, falling back to MongoDB:', err);
+      
+      // Fallback: Fetch from MongoDB
+      try {
+        const fallbackResponse = await fetch("http://localhost:5001/api/questions", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+        
+        const fallbackData = await fallbackResponse.json();
+        
+        if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+          // Shuffle and select random 10-15 questions from DB
+          const shuffled = fallbackData.sort(() => 0.5 - Math.random());
+          const selected = shuffled.slice(0, Math.min(12, shuffled.length));
+          
+          setQuestions(selected.map(q => q.question));
+          setStoredAnswers(selected.map(q => q.answer || ''));
+          setUsedFallback(true);
+          
+          console.log('Using fallback questions from MongoDB');
+        } else {
+          throw new Error('No fallback questions available');
+        }
+      } catch (fallbackErr) {
+        console.error('Error fetching fallback questions:', fallbackErr);
+        alert('Failed to fetch questions from both AI and database. Please ensure the server is running.');
+      }
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -110,6 +160,8 @@ const InterviewSimulator: React.FC = () => {
     setUserAnswers([])
     setCurrentAnswer("")
     setAIFeedback([])
+    setStoredAnswers([])
+    setUsedFallback(false)
     await fetchQuestions()
   }
 
@@ -130,6 +182,7 @@ const InterviewSimulator: React.FC = () => {
     // Capture answer and question before clearing state
     const answerToSubmit = currentAnswer;
     const questionToSubmit = questions[currentQuestion];
+    const questionIdx = currentQuestion;
     
     // Move to next question
     setCurrentAnswer("");
@@ -142,8 +195,8 @@ const InterviewSimulator: React.FC = () => {
       setFeedbackProgress(0);
     }
     
-    // Get AI feedback for this answer in background (don't wait)
-    getAIReview(questionToSubmit, answerToSubmit);
+    // Get feedback for this answer in background (don't wait)
+    getAIReview(questionToSubmit, answerToSubmit, questionIdx);
   }
 
   // Auto-transition to summary when feedback is complete
@@ -333,29 +386,59 @@ const InterviewSimulator: React.FC = () => {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-white mb-2">Interview Summary</h1>
-            <p className="text-gray-400">See your answers and AI feedback below.</p>
+            <p className="text-gray-400">See your answers and feedback below.</p>
           </div>
+
+          {/* Fallback Banner */}
+          {usedFallback && (
+            <div className="mb-8 bg-blue-900/30 border border-blue-600 text-blue-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <span className="text-xl mr-3">ℹ️</span>
+                <div>
+                  <strong>Questions from Database</strong>
+                  <p className="text-sm mt-1">Since the AI service was unavailable, questions were loaded from our question database. The answers shown below are reference answers from our database.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-8">
             {questions.map((q, idx) => (
               <div key={idx} className="card bg-dark-card border-dark-border p-6">
-                <h2 className="text-lg font-semibold text-white mb-2">Q{idx + 1}: {q}</h2>
-                <div className="mb-2">
-                  <span className="font-medium text-gray-300">Your Answer:</span>
-                  <div className="bg-gray-800 text-white rounded p-3 mt-1">{userAnswers[idx] || <em>No answer</em>}</div>
+                <h2 className="text-lg font-semibold text-white mb-4">Q{idx + 1}: {q}</h2>
+                
+                <div className="mb-4">
+                  <span className="font-medium text-gray-300 block mb-2">Your Answer:</span>
+                  <div className="bg-gray-800 text-white rounded p-3 border border-gray-700">
+                    {userAnswers[idx] || <em className="text-gray-400">No answer provided</em>}
+                  </div>
                 </div>
+
                 <div>
-                  <span className="font-medium text-blue-200">AI Feedback:</span>
-                  <div className="bg-blue-900/30 text-blue-200 rounded p-3 mt-1">{aiFeedback[idx] || <em>No feedback</em>}</div>
+                  <span className="font-medium block mb-2">
+                    {usedFallback ? (
+                      <span className="text-blue-200">Reference Answer:</span>
+                    ) : (
+                      <span className="text-blue-200">AI Feedback:</span>
+                    )}
+                  </span>
+                  <div className="bg-blue-900/30 text-blue-200 rounded p-3 border border-blue-600/30">
+                    {aiFeedback[idx] || storedAnswers[idx] || <em className="text-gray-400">No feedback available</em>}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
+
           <div className="text-center mt-10">
             <button
-              onClick={startInterview}
+              onClick={() => {
+                setShowSummary(false);
+                startInterview();
+              }}
               className="btn-primary px-8 py-3 text-lg"
             >
-              Restart Interview
+              Start New Interview
             </button>
           </div>
         </div>
