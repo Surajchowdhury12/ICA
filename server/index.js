@@ -159,7 +159,7 @@ app.delete('/api/questions/:id', async (req, res) => {
   }
 });
 
-// POST /api/generate-questions - Generate questions using Ollama
+// POST /api/generate-questions - Generate questions using Ollama, fallback to MongoDB
 app.post('/api/generate-questions', async (req, res) => {
   const { role, level, techStack = '' } = req.body;
 
@@ -206,21 +206,87 @@ app.post('/api/generate-questions', async (req, res) => {
   } catch (err) {
     console.error('[Ollama] Question generation failed:', err.message);
     
-    // Fallback: return default questions
-    const defaultQuestions = [
-      "What is your experience with " + role + "?",
-      "Tell me about your most challenging project.",
-      "How do you approach problem-solving?",
-      "Describe your experience with relevant technologies.",
-      "What have you learned from your mistakes?",
-      "How do you stay updated with new technologies?",
-      "Tell me about a time you had to learn something new quickly.",
-      "What is your approach to code quality?",
-      "How do you handle difficult team members?",
-      "What are your career goals?"
-    ];
-    
-    res.json({ questions: defaultQuestions });
+    // Fallback: Fetch from MongoDB based on experience level and role
+    try {
+      console.log(`[Fallback] Fetching questions from MongoDB for ${role} at ${level} level...`);
+      
+      // Map experience level to difficulty
+      const difficultyMap = {
+        'junior': 'easy',
+        'mid': 'medium',
+        'senior': 'hard'
+      };
+      
+      // Map role to categories in MongoDB
+      const roleMap = {
+        'frontend': ['React', 'JavaScript', 'Frontend', 'CSS', 'HTML'],
+        'backend': ['Backend', 'Node.js', 'Python', 'Java', 'Database', 'API', 'Server'],
+        'fullstack': ['React', 'JavaScript', 'Backend', 'Node.js', 'Database', 'Frontend', 'API'],
+        'mobile': ['React Native', 'Mobile', 'iOS', 'Android', 'Flutter'],
+        'devops': ['DevOps', 'Docker', 'Kubernetes', 'AWS', 'Cloud', 'CI/CD'],
+        'data': ['Data Science', 'Python', 'Machine Learning', 'SQL', 'Analytics', 'Data']
+      };
+      
+      const difficulty = difficultyMap[level] || 'easy';
+      const categories = roleMap[role] || ['JavaScript', 'Backend'];
+      
+      // Fetch questions from MongoDB with matching role category and difficulty
+      const fallbackQuestions = await db.collection('questions').find({
+        difficulty: difficulty,
+        type: 'technical',
+        category: { $in: categories }
+      }).limit(12).toArray();
+      
+      if (fallbackQuestions.length > 0) {
+        // Extract only the question text
+        const questionTexts = fallbackQuestions.map(q => q.question);
+        console.log(`[Fallback] Fetched ${questionTexts.length} ${role} ${difficulty} questions from MongoDB`);
+        return res.json({ questions: questionTexts });
+      } else {
+        // If no matching role+difficulty, try just difficulty
+        console.log(`[Fallback] No ${role} ${difficulty} questions found, fetching any ${difficulty} technical questions...`);
+        const anyDifficultyQuestions = await db.collection('questions').find({
+          difficulty: difficulty,
+          type: 'technical'
+        }).limit(12).toArray();
+        
+        if (anyDifficultyQuestions.length > 0) {
+          const questionTexts = anyDifficultyQuestions.map(q => q.question);
+          return res.json({ questions: questionTexts });
+        } else {
+          // If no matching difficulty, fetch any technical questions
+          console.log(`[Fallback] No ${difficulty} questions found, fetching any technical questions...`);
+          const anyQuestions = await db.collection('questions').find({
+            type: 'technical'
+          }).limit(12).toArray();
+          
+          if (anyQuestions.length > 0) {
+            const questionTexts = anyQuestions.map(q => q.question);
+            return res.json({ questions: questionTexts });
+          } else {
+            throw new Error('No questions available in MongoDB');
+          }
+        }
+      }
+    } catch (fallbackErr) {
+      console.error('[Fallback] MongoDB fallback failed:', fallbackErr.message);
+      
+      // Last resort: return generic default questions
+      const defaultQuestions = [
+        "What is your experience with " + role + "?",
+        "Tell me about your most challenging project.",
+        "How do you approach problem-solving?",
+        "Describe your experience with relevant technologies.",
+        "What have you learned from your mistakes?",
+        "How do you stay updated with new technologies?",
+        "Tell me about a time you had to learn something new quickly.",
+        "What is your approach to code quality?",
+        "How do you handle difficult team members?",
+        "What are your career goals?"
+      ];
+      
+      res.json({ questions: defaultQuestions });
+    }
   }
 });
 
