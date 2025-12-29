@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+
 const InterviewSimulator: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<string>('frontend')
   const [selectedLevel, setSelectedLevel] = useState<string>('junior')
@@ -35,7 +37,7 @@ const InterviewSimulator: React.FC = () => {
       }
 
       // Otherwise, try to get AI feedback
-      const response = await fetch("http://localhost:5001/api/ai-feedback", {
+      const response = await fetch(`${API_URL}/api/ai-feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -97,7 +99,7 @@ const InterviewSimulator: React.FC = () => {
     setIsLoadingQuestions(true);
     try {
       // Try to fetch from AI first
-      const response = await fetch("http://localhost:5001/api/generate-questions", {
+      const response = await fetch(`${API_URL}/api/generate-questions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -122,7 +124,7 @@ const InterviewSimulator: React.FC = () => {
       
       // Fallback: Fetch from MongoDB
       try {
-        const fallbackResponse = await fetch("http://localhost:5001/api/questions", {
+        const fallbackResponse = await fetch(`${API_URL}/api/questions`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json"
