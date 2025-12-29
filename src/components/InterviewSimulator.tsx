@@ -10,7 +10,6 @@ const InterviewSimulator: React.FC = () => {
   const [userAnswers, setUserAnswers] = useState<string[]>([])
   const [currentAnswer, setCurrentAnswer] = useState<string>('')
   const [aiFeedback, setAIFeedback] = useState<string[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(false)
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false)
   const [questions, setQuestions] = useState<string[]>([])
   const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(false)
@@ -238,7 +237,7 @@ const InterviewSimulator: React.FC = () => {
                     placeholder="Type your answer here..."
                     value={currentAnswer}
                     onChange={e => setCurrentAnswer(e.target.value)}
-                    disabled={isLoading}
+                    disabled={isGeneratingFeedback}
                   />
                 </div>
 
@@ -257,14 +256,14 @@ const InterviewSimulator: React.FC = () => {
                   <button
                     onClick={endInterview}
                     className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
-                    disabled={isLoading}
+                    disabled={isGeneratingFeedback}
                   >
                     End Interview
                   </button>
                   <button
                     onClick={nextQuestion}
                     className="btn-primary"
-                    disabled={isLoading || !currentAnswer.trim()}
+                    disabled={isGeneratingFeedback || !currentAnswer.trim()}
                   >
                     {currentQuestion < questions.length - 1 ? 'Next Question' : 'Finish Interview'}
                   </button>
