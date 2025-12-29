@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
+const { MongoClient, ObjectId } = require('mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -9,6 +10,27 @@ const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/interview-coach';
+let db;
+
+async function connectToMongoDB() {
+  try {
+    const client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db('interview-coach');
+    console.log('✅ Connected to MongoDB');
+    
+    // Create index for faster queries
+    await db.collection('questions').createIndex({ category: 1, difficulty: 1, type: 1 });
+  } catch (err) {
+    console.error('❌ Failed to connect to MongoDB:', err.message);
+    process.exit(1);
+  }
+}
+
+connectToMongoDB();
 
 const OLLAMA_URL = 'http://localhost:11434/api/chat';
 const OLLAMA_MODEL = 'gemma3:4b';
@@ -44,7 +66,100 @@ async function callOllama(messages, timeoutMs = 30000) {
   }
 }
 
-// POST /api/generate-questions
+// GET /api/questions - Get all questions with optional filters
+app.get('/api/questions', async (req, res) => {
+  try {
+    const { category, difficulty, type } = req.query;
+    const filter = {};
+    
+    if (category && category !== 'all') filter.category = category;
+    if (difficulty && difficulty !== 'all') filter.difficulty = difficulty;
+    if (type && type !== 'all') filter.type = type;
+
+    const questions = await db.collection('questions').find(filter).toArray();
+    res.json(questions);
+  } catch (err) {
+    console.error('Error fetching questions:', err);
+    res.status(500).json({ error: 'Failed to fetch questions' });
+  }
+});
+
+// POST /api/questions - Add a new question
+app.post('/api/questions', async (req, res) => {
+  try {
+    const { question, type, difficulty, category, tags, answer } = req.body;
+    
+    const result = await db.collection('questions').insertOne({
+      question,
+      type,
+      difficulty,
+      category,
+      tags,
+      answer: answer || '',
+      createdAt: new Date()
+    });
+
+    res.json({ id: result.insertedId });
+  } catch (err) {
+    console.error('Error adding question:', err);
+    res.status(500).json({ error: 'Failed to add question' });
+  }
+});
+
+// POST /api/questions/seed - Seed questions from array
+app.post('/api/questions/seed', async (req, res) => {
+  try {
+    const { questions } = req.body;
+    
+    if (!Array.isArray(questions)) {
+      return res.status(400).json({ error: 'Questions must be an array' });
+    }
+
+    const questionsWithTimestamp = questions.map(q => ({
+      ...q,
+      createdAt: new Date()
+    }));
+
+    const result = await db.collection('questions').insertMany(questionsWithTimestamp);
+    res.json({ insertedCount: result.insertedCount });
+  } catch (err) {
+    console.error('Error seeding questions:', err);
+    res.status(500).json({ error: 'Failed to seed questions' });
+  }
+});
+
+// PUT /api/questions/:id - Update a question
+app.put('/api/questions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    await db.collection('questions').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updates }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error updating question:', err);
+    res.status(500).json({ error: 'Failed to update question' });
+  }
+});
+
+// DELETE /api/questions/:id - Delete a question
+app.delete('/api/questions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.collection('questions').deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting question:', err);
+    res.status(500).json({ error: 'Failed to delete question' });
+  }
+});
+
+// POST /api/generate-questions - Generate questions using Ollama
 app.post('/api/generate-questions', async (req, res) => {
   const { role, level, techStack = '' } = req.body;
 
@@ -109,7 +224,7 @@ app.post('/api/generate-questions', async (req, res) => {
   }
 });
 
-// POST /api/ai-feedback
+// POST /api/ai-feedback - Get feedback from Ollama
 app.post('/api/ai-feedback', async (req, res) => {
   const { question, answer } = req.body;
 
@@ -157,3 +272,4 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Using Ollama at ${OLLAMA_URL} with model: ${OLLAMA_MODEL}`);
 });
+

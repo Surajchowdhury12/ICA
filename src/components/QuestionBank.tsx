@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react'
-
-interface Question {
-  id: number
-  question: string
-  type: 'technical' | 'behavioral' | 'coding'
-  difficulty: 'easy' | 'medium' | 'hard'
-  category: string
-  tags: string[]
-  answer?: string
-}
+import type { Question } from '../data/questionData'
+import { getAllQuestions } from '../services/mongoService'
 
 const QuestionBank: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([])
@@ -17,81 +9,31 @@ const QuestionBank: React.FC = () => {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all')
   const [selectedType, setSelectedType] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState<string>('')
-
-  const mockQuestions: Question[] = [
-    {
-      id: 1,
-      question: "What is the difference between let, const, and var in JavaScript?",
-      type: "technical",
-      difficulty: "easy",
-      category: "JavaScript",
-      tags: ["variables", "es6", "scope"]
-    },
-    {
-      id: 2,
-      question: "Explain the concept of closures in JavaScript with an example.",
-      type: "technical",
-      difficulty: "medium",
-      category: "JavaScript",
-      tags: ["closures", "functions", "scope"]
-    },
-    {
-      id: 3,
-      question: "How do you optimize React application performance?",
-      type: "technical",
-      difficulty: "hard",
-      category: "React",
-      tags: ["performance", "optimization", "react"]
-    },
-    {
-      id: 4,
-      question: "Tell me about a challenging project you worked on.",
-      type: "behavioral",
-      difficulty: "medium",
-      category: "General",
-      tags: ["experience", "projects", "challenges"]
-    },
-    {
-      id: 5,
-      question: "Implement a function to reverse a string.",
-      type: "coding",
-      difficulty: "easy",
-      category: "Algorithms",
-      tags: ["strings", "algorithms", "basic"]
-    },
-    {
-      id: 6,
-      question: "What is the difference between SQL and NoSQL databases?",
-      type: "technical",
-      difficulty: "medium",
-      category: "Database",
-      tags: ["sql", "nosql", "database"]
-    },
-    {
-      id: 7,
-      question: "Explain REST API principles and best practices.",
-      type: "technical",
-      difficulty: "medium",
-      category: "API",
-      tags: ["rest", "api", "http"]
-    },
-    {
-      id: 8,
-      question: "Implement a binary search algorithm.",
-      type: "coding",
-      difficulty: "medium",
-      category: "Algorithms",
-      tags: ["binary-search", "algorithms", "search"]
-    }
-  ]
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
 
   const categories = ['all', 'JavaScript', 'React', 'Database', 'API', 'Algorithms', 'General']
   const difficulties = ['all', 'easy', 'medium', 'hard']
   const types = ['all', 'technical', 'behavioral', 'coding']
 
+  // Fetch questions from Firebase
   useEffect(() => {
-    setQuestions(mockQuestions)
-    setFilteredQuestions(mockQuestions)
+    const fetchQuestions = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const data = await getAllQuestions()
+        setQuestions(data)
+        setFilteredQuestions(data)
+      } catch (err) {
+        console.error('Error fetching questions:', err)
+        setError('Failed to load questions. Please try again later.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchQuestions()
   }, [])
 
   useEffect(() => {
@@ -143,6 +85,37 @@ const QuestionBank: React.FC = () => {
       default:
         return '❓'
     }
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <section className="min-h-screen bg-gradient-to-br from-gray-50 to-white dark:from-dark-bg dark:to-gray-900 py-16 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-4 border-primary-500 mb-4"></div>
+          <p className="text-gray-600 dark:text-dark-muted">Loading questions...</p>
+        </div>
+      </section>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <section className="min-h-screen bg-gradient-to-br from-gray-50 to-white dark:from-dark-bg dark:to-gray-900 py-16 flex items-center justify-center">
+        <div className="max-w-md mx-auto px-4 text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Error Loading Questions</h2>
+          <p className="text-gray-600 dark:text-dark-muted mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    )
   }
 
   return (
