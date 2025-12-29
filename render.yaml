@@ -3,9 +3,8 @@ services:
     name: interview-coach-backend
     env: node
     plan: free
-    root: server
-    buildCommand: cd server && npm install
-    startCommand: cd server && npm start
+    buildCommand: npm install --prefix server
+    startCommand: npm start --prefix server
     envVars:
       - key: MONGODB_URI
         value: mongodb+srv://surajchowdhury060_db_user:CereDsvcJj8DWlmQ@interview-coach-cluster.ffiodji.mongodb.net/?retryWrites=true&w=majority
