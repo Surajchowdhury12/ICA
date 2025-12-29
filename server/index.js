@@ -290,7 +290,7 @@ app.post('/api/generate-questions', async (req, res) => {
   }
 });
 
-// POST /api/ai-feedback - Get feedback from Ollama
+// POST /api/ai-feedback - Get feedback from Ollama, fallback to MongoDB answer
 app.post('/api/ai-feedback', async (req, res) => {
   const { question, answer } = req.body;
 
@@ -327,10 +327,35 @@ app.post('/api/ai-feedback', async (req, res) => {
   } catch (err) {
     console.error('[Ollama] Feedback generation failed:', err.name, err.message);
     
-    // Return feedback even on error - use fallback
-    const fallbackFeedback = 'Good effort! Your answer shows understanding. Focus on clarity and providing specific examples.';
-    console.log('[Ollama] Using fallback feedback');
-    res.json({ feedback: fallbackFeedback });
+    // Fallback: Try to fetch stored answer from MongoDB
+    try {
+      console.log('[Fallback] Fetching stored answer from MongoDB...');
+      
+      const storedQuestion = await db.collection('questions').findOne({
+        question: question,
+        answer: { $exists: true, $ne: '' }
+      });
+      
+      if (storedQuestion && storedQuestion.answer) {
+        console.log('[Fallback] Found stored answer in MongoDB');
+        return res.json({ 
+          feedback: storedQuestion.answer,
+          source: 'database'
+        });
+      }
+      
+      throw new Error('No stored answer found in MongoDB');
+    } catch (fallbackErr) {
+      console.error('[Fallback] MongoDB fallback failed:', fallbackErr.message);
+      
+      // Last resort: return generic default feedback
+      const fallbackFeedback = 'Good effort! Your answer shows understanding. Focus on clarity and providing specific examples with relevant details.';
+      console.log('[Fallback] Using generic fallback feedback');
+      res.json({ 
+        feedback: fallbackFeedback,
+        source: 'generic'
+      });
+    }
   }
 });
 
