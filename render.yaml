@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: interview-coach-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URI
+        value: mongodb+srv://surajchowdhury060_db_user:CereDsvcJj8DWlmQ@interview-coach-cluster.ffiodji.mongodb.net/?retryWrites=true&w=majority
+      - key: PORT
+        value: 5001
+      - key: NODE_ENV
+        value: production
