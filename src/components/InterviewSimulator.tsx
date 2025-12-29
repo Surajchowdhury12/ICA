@@ -19,6 +19,7 @@ const InterviewSimulator: React.FC = () => {
   const [feedbackProgress, setFeedbackProgress] = useState<number>(0)
   const [usedFallback, setUsedFallback] = useState<boolean>(false)
   const [storedAnswers, setStoredAnswers] = useState<string[]>([])
+  const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false)
 
   // Call backend API for feedback (non-blocking, background)
   async function getAIReview(question: string, answer: string, questionIdx: number) {
@@ -169,9 +170,24 @@ const InterviewSimulator: React.FC = () => {
 
 
   const endInterview = () => {
-    setIsGeneratingFeedback(true)
+    setShowExitConfirm(true)
+  }
+
+  const confirmExit = () => {
+    setShowExitConfirm(false)
     setIsInterviewActive(false)
-    setFeedbackProgress(0)
+    setShowSummary(false)
+    setCurrentQuestion(0)
+    setUserAnswers([])
+    setCurrentAnswer('')
+    setAIFeedback([])
+    setStoredAnswers([])
+    setUsedFallback(false)
+    setQuestions([])
+  }
+
+  const cancelExit = () => {
+    setShowExitConfirm(false)
   }
 
 
@@ -227,6 +243,34 @@ const InterviewSimulator: React.FC = () => {
   if (isInterviewActive) {
     return (
       <section className="min-h-screen bg-gradient-to-br from-dark-bg to-gray-900 py-8">
+        {/* Exit Confirmation Modal */}
+        {showExitConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-dark-card border border-dark-border rounded-lg p-8 max-w-md w-full mx-4 shadow-2xl">
+              <div className="text-center mb-6">
+                <div className="text-4xl mb-4">⚠️</div>
+                <h2 className="text-2xl font-bold text-white mb-2">Exit Interview?</h2>
+                <p className="text-gray-400">Your progress will not be saved if you exit now.</p>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelExit}
+                  className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors duration-200"
+                >
+                  Continue Interview
+                </button>
+                <button
+                  onClick={confirmExit}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Interview Header */}
           <div className="text-center mb-8">
