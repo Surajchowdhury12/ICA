@@ -3,10 +3,15 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
 const { MongoClient, ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const JWT_SECRET = process.env.JWT_SECRET;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -156,6 +161,91 @@ app.delete('/api/questions/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting question:', err);
     res.status(500).json({ error: 'Failed to delete question' });
+  }
+});
+
+// POST /api/auth/google - Google OAuth authentication
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    // Verify the token with Google
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const firstName = payload.given_name || 'User';
+    const lastName = payload.family_name || '';
+    const picture = payload.picture;
+
+    // Check if user exists in MongoDB
+    let user = await db.collection('users').findOne({ email });
+
+    if (!user) {
+      // Create new user
+      const result = await db.collection('users').insertOne({
+        email,
+        firstName,
+        lastName,
+        picture,
+        provider: 'google',
+        providerId: payload.sub,
+        createdAt: new Date()
+      });
+
+      user = {
+        _id: result.insertedId,
+        email,
+        firstName,
+        lastName,
+        picture
+      };
+    } else {
+      // Update user profile if needed
+      await db.collection('users').updateOne(
+        { email },
+        {
+          $set: {
+            firstName,
+            lastName,
+            picture,
+            lastLogin: new Date()
+          }
+        }
+      );
+    }
+
+    // Generate JWT token
+    const jwtToken = jwt.sign(
+      {
+        userId: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token: jwtToken,
+      user: {
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        picture: user.picture
+      }
+    });
+  } catch (err) {
+    console.error('Google auth error:', err);
+    res.status(401).json({ error: 'Authentication failed' });
   }
 });
 
