@@ -77,7 +77,9 @@ app.get('/api/questions', async (req, res) => {
     const { category, difficulty, type } = req.query;
     const filter = {};
     
-    if (category && category !== 'all') filter.category = category;
+    if (category && category !== 'all') {
+      filter.category = { $regex: category, $options: 'i' }; // Case-insensitive
+    }
     if (difficulty && difficulty !== 'all') filter.difficulty = difficulty;
     if (type && type !== 'all') filter.type = type;
 
