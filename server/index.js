@@ -323,7 +323,7 @@ app.post('/api/generate-questions', async (req, res) => {
       // Fetch questions from MongoDB with matching role category and difficulty
       const fallbackQuestions = await db.collection('questions').find({
         difficulty: difficulty,
-        type: 'technical',
+        type: { $in: ['technical', 'behavioral'] },
         category: { $in: categories }
       }).limit(12).toArray();
       
@@ -334,10 +334,10 @@ app.post('/api/generate-questions', async (req, res) => {
         return res.json({ questions: questionTexts });
       } else {
         // If no matching role+difficulty, try just difficulty
-        console.log(`[Fallback] No ${role} ${difficulty} questions found, fetching any ${difficulty} technical questions...`);
+        console.log(`[Fallback] No ${role} ${difficulty} questions found, fetching any ${difficulty} questions...`);
         const anyDifficultyQuestions = await db.collection('questions').find({
           difficulty: difficulty,
-          type: 'technical'
+          type: { $in: ['technical', 'behavioral'] }
         }).limit(12).toArray();
         
         if (anyDifficultyQuestions.length > 0) {
@@ -345,9 +345,9 @@ app.post('/api/generate-questions', async (req, res) => {
           return res.json({ questions: questionTexts });
         } else {
           // If no matching difficulty, fetch any technical questions
-          console.log(`[Fallback] No ${difficulty} questions found, fetching any technical questions...`);
+          console.log(`[Fallback] No ${difficulty} questions found, fetching any questions...`);
           const anyQuestions = await db.collection('questions').find({
-            type: 'technical'
+            type: { $in: ['technical', 'behavioral'] }
           }).limit(12).toArray();
           
           if (anyQuestions.length > 0) {
