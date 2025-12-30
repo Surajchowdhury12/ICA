@@ -1,6 +1,6 @@
 # Interview Cracker App 🚀
 
-A modern React 19 application with Tailwind CSS designed to help software developers practice and excel in technical interviews.
+A modern React 19 application with Tailwind CSS designed to help software developers practice and excel in technical interviews. Go to [Interview Cracker App](https://interview-cracker-app.netlify.app/).
 
 ## Features ✨
 
