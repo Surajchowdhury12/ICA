@@ -12,7 +12,7 @@ const QuestionBank: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
-  const categories = ['all', 'JavaScript', 'React', 'Database', 'API', 'Algorithms', 'General']
+  const categories = ['all', 'javascript', 'react', 'python', 'databases', 'backend', 'security', 'data science', 'machine learning', 'sql', 'analytics', 'system-design', 'tools', 'web', 'general']
   const difficulties = ['all', 'easy', 'medium', 'hard']
   const types = ['all', 'technical', 'behavioral', 'coding']
 
@@ -40,7 +40,7 @@ const QuestionBank: React.FC = () => {
     let filtered = questions
 
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter(q => q.category === selectedCategory)
+      filtered = filtered.filter(q => q.category.toLowerCase() === selectedCategory.toLowerCase())
     }
 
     if (selectedDifficulty !== 'all') {
